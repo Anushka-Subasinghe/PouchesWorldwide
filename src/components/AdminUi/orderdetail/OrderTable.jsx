@@ -23,7 +23,7 @@ const OrderTable = ({ onSelectUser, selectedOrderEmail, order }) => {
         }
         const result = await response.json();
 
-        // Filter data based on your conditions (wholesaler or distributor, confirmed true, blocked false)
+        // Filter data based on your conditions (wholesaler/distributor, confirmed, blocked false)
         const filteredData = result.filter(
           (item) =>
             (item.urole === "wholesaler" || item.urole === "distributor") &&
@@ -91,7 +91,12 @@ const OrderTable = ({ onSelectUser, selectedOrderEmail, order }) => {
       });
 
       // Filter users who have all the requested products with the required cans
+      // AND whose address (city) matches the order's address.city if provided.
       const filteredUsers = Array.from(userStockMap.entries()).filter(([userId, userData]) => {
+        // Check city filter: if order has a city defined, only allow users with a matching address.
+        if (order.address?.city && userData.address !== order.address.city) {
+          return false;
+        }
         return productIds.every((productId, index) => {
           return userData.stocks.some(
             (stock) =>
@@ -112,7 +117,7 @@ const OrderTable = ({ onSelectUser, selectedOrderEmail, order }) => {
 
       setFilteredStock(filtered);
     }
-  }, [order.cart, inventoryData]);
+  }, [order.cart, inventoryData, order.address]);
 
   // If there's a search term, filter based on the address, otherwise show all data
   const filteredData = search

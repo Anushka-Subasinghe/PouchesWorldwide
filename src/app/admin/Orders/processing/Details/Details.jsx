@@ -14,10 +14,11 @@ const Details = () => {
 
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [orders, setOrders] = useState([]);
-  const [users, setUsers] = useState([]); // Store filtered users
+  const [allUsers, setAllUsers] = useState([]); // All fetched users
+  const [users, setUsers] = useState([]); // Users after filtering
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedOrderEmail, setSelectedOrderEmail] = useState(null); // State to store selected order's email
+  const [selectedOrderEmail, setSelectedOrderEmail] = useState(null); // Selected order's email
 
   const handleSelectUser = (userId) => {
     setSelectedUserId(userId);
@@ -39,6 +40,7 @@ const Details = () => {
       }
     };
 
+    // Fetch users and store them in allUsers (unfiltered)
     const fetchUsers = async () => {
       try {
         const response = await fetch("https://pouchesworldwide.com/strapi/api/users/");
@@ -46,16 +48,7 @@ const Details = () => {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const usersData = await response.json();
-
-        // Filter users based on conditions
-        const filteredUsers = usersData.filter(
-          (user) =>
-            (user.urole === "wholesaler" || user.urole === "distributor") &&
-            user.confirmed === true &&
-            user.blocked === false
-        );
-
-        setUsers(filteredUsers);
+        setAllUsers(usersData || []);
       } catch (err) {
         setError(err.message || "Error fetching users");
       }
@@ -65,13 +58,34 @@ const Details = () => {
     fetchUsers();
   }, []);
 
-  // Find the order with the matching ID and set its email
+  // Find the order with the matching ID
   const selectedOrder = orders.find((order) => String(order.id) === orderId);
+
   useEffect(() => {
     if (selectedOrder) {
       setSelectedOrderEmail(selectedOrder?.user?.email || null); // Set the email from the selected order
     }
   }, [selectedOrder]);
+
+  // After orders and allUsers are fetched, further filter users based on:
+  // - urole (wholesaler or distributor), confirmed, not blocked.
+  // - The user's city matches the order.address.city.
+  // - The user has a quantity >= the quantity requested in the order.
+  useEffect(() => {
+    if (selectedOrder && allUsers.length > 0) {
+      const orderCity = selectedOrder.address?.city || "";
+      const requestedQuantity = selectedOrder.cart?.quantity || 0;
+      const filteredUsers = allUsers.filter((user) => {
+        return (
+          (user.urole === "wholesaler" || user.urole === "distributor") &&
+          user.confirmed === true &&
+          user.blocked === false &&
+          user.city === orderCity 
+        );
+      });
+      setUsers(filteredUsers);
+    }
+  }, [selectedOrder, allUsers]);
 
   // Extract cart data from selectedOrder
   const cartData = selectedOrder?.cart ? {
