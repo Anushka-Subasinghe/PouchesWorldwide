@@ -8,6 +8,7 @@ import Footer from "@/components/Footer";
 import { Trash, Plus } from "lucide-react";
 
 const MAX_GUIDELINES = 5;
+const MAX_PRICE_RANGES = 10;
 
 export default function AdminDashboard() {
   const searchParams = useSearchParams();
@@ -19,6 +20,7 @@ export default function AdminDashboard() {
     "Place the pouch between your gum and lip and let it rest.",
     "Do not chew or swallow the pouch.",
   ]);
+  const [priceRanges, setPriceRanges] = useState([]); // New state for price ranges
   const [product, setProduct] = useState(null);
   const [productName, setProductName] = useState("");
   const [productStock, setProductStock] = useState("");
@@ -156,9 +158,27 @@ export default function AdminDashboard() {
     setImageId(null); // Clear the image ID
   };
 
+  // Price range handlers
+  const handleAddPriceRange = () => {
+    if (priceRanges.length < MAX_PRICE_RANGES) {
+      setPriceRanges([...priceRanges, { min: "", max: "", price: "" }]);
+    }
+  };
+
+  const handleDeletePriceRange = (index) => {
+    const updatedRanges = priceRanges.filter((_, i) => i !== index);
+    setPriceRanges(updatedRanges);
+  };
+
+  const handlePriceRangeChange = (index, field, value) => {
+    const updatedRanges = [...priceRanges];
+    updatedRanges[index][field] = value;
+    setPriceRanges(updatedRanges);
+  };
+
   // Handle product creation/update
   const handleAdd = async () => {
-    // POST payload to the first API
+    // Build the payload including price ranges
     const postPayload = {
       Name: productName,
       Stock: Number(productStock),
@@ -173,6 +193,11 @@ export default function AdminDashboard() {
       Guidelines: guidelines.map((guideline) => ({
         type: "paragraph",
         children: [{ type: "text", text: guideline }],
+      })),
+      price_ranges: priceRanges.map(range => ({
+        min: Number(range.min),
+        max: Number(range.max),
+        price: Number(range.price),
       })),
     };
 
@@ -195,34 +220,34 @@ export default function AdminDashboard() {
       console.log("Product created:", postResult);
       setProduct(postResult.data);
 
-      // PUT request to the second API
+      // PUT request to the second API (if needed)
       const putPayload = {
         Name: productName,
-    Guidelines: [
-      {
-        "type": "paragraph",
-        "children": [
+        Guidelines: [
           {
-            "text": "Updated guideline: Do not use Blue Giant if you are under 21 years old.",
-            "type": "text"
+            type: "paragraph",
+            children: [
+              {
+                text: "Updated guideline: Do not use Blue Giant if you are under 21 years old.",
+                type: "text"
+              }
+            ]
+          }
+        ],
+        Description: "Updated description for PUXX Cool Mint.",
+        flavor: selectedFlavor, // ID of the related flavor
+        category: selectedCategory, // ID of the related category
+        brand: selectedBrand, // ID of the related brand
+        variant: [
+          {
+            strength: "pagocmypvfkltheh3nv1sn12", // ID of the related strength
+            product: "wo90l16935awspro7zel4uho" // ID of the related product
+          },
+          {
+            strength: "w16vw4mvavrmjj1uuiu2e7v4", // ID of the related strength
+            product: "burmwqrv5ecm39a5s76cl2d1" // ID of the related product
           }
         ]
-      }
-    ],
-    Description: "Updated description for PUXX Cool Mint.",
-    flavor: selectedFlavor, // ID of the related flavor
-    category: selectedCategory, // ID of the related category
-    brand: selectedBrand, // ID of the related brand
-    variant: [
-      {
-        strength: "pagocmypvfkltheh3nv1sn12", // ID of the related strength
-        product: "wo90l16935awspro7zel4uho" // ID of the related product
-      },
-      {
-        strength: "w16vw4mvavrmjj1uuiu2e7v4", // ID of the related strength
-        product: "burmwqrv5ecm39a5s76cl2d1" // ID of the related product
-      }
-    ]
       };
 
       const putRes = await fetch(
@@ -274,6 +299,7 @@ export default function AdminDashboard() {
       <main className="container mx-auto px-4 py-8 max-w-9xl w-full min-h-screen">
         <div className="max-w-8xl mx-auto mb-12">
           <div className="flex w-full flex-col lg:flex-row">
+            {/* Left Column: Image & Guidelines */}
             <div className="card flex-grow place-items-center">
               <div className="w-[603px] h-[525px] relative">
                 <div className="w-[603px] h-[525px] absolute left-0 top-0 bg-neutral rounded-[5px]" />
@@ -336,7 +362,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Product Details Section */}
+            {/* Right Column: Product Details */}
             <div className="card flex-grow place-items-center">
               <div className="bg-white p-8 rounded-lg">
                 <p className="opacity-50 text-black text-sm font-semibold">What Is This Product</p>
@@ -457,7 +483,52 @@ export default function AdminDashboard() {
                   value={productStock}
                   onChange={(e) => setProductStock(e.target.value)}
                 />
+
                 <div className="divider"></div>
+
+                {/* Price Ranges Section inserted between Stock & Description */}
+                <div className="flex-col gap-4 mb-6">
+                  <p className="opacity-50 text-black text-sm font-semibold">Price Ranges</p>
+                  {priceRanges.map((range, index) => (
+                    <div key={index} className="flex items-center gap-2 mb-6">
+                      <input
+                        type="number"
+                        placeholder="Min Quantity"
+                        value={range.min}
+                        onChange={(e) => handlePriceRangeChange(index, "min", e.target.value)}
+                        className="w-[150px] text-[#3f6075] text-[20px] font-normal border placeholder-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Max Quantity"
+                        value={range.max}
+                        onChange={(e) => handlePriceRangeChange(index, "max", e.target.value)}
+                        className="w-[150px] text-[#3f6075] text-[20px] font-normal border placeholder-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Price per Can"
+                        value={range.price}
+                        onChange={(e) => handlePriceRangeChange(index, "price", e.target.value)}
+                        className="w-[150px] text-[#3f6075] text-[20px] font-normal border placeholder-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button className="text-red-500" onClick={() => handleDeletePriceRange(index)}>
+                        <Trash size={24} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    className="bg-green-500 text-white py-2 px-4 rounded disabled:opacity-50"
+                    onClick={handleAddPriceRange}
+                    disabled={priceRanges.length >= MAX_PRICE_RANGES}
+                  >
+                    Add New Price Range
+                  </button>
+                </div>
+
+                <div className="divider"></div>
+
+                {/* Description Section */}
                 <div className="space-y-4 mb-6">
                   <p className="opacity-50 text-black text-sm font-semibold">Description</p>
                   <textarea

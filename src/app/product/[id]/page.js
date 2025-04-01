@@ -14,7 +14,7 @@ import { MoveLeft, MoveRight } from "lucide-react";
 import BlackBanner from '@/components/BlackBanner';
 import Pagination from '@/components/Pagination';
 import useCartStore from "@/store/cartStore"; // Import Zustand store
-import { fetchAllProducts } from "@/app/utils/product"; // Updated utility function
+import { fetchProducts } from "../../utils/fetchProducts"; // Updated utility function
 import { getUserRole } from "@/app/utils/getUserRole";
 import ReviewSection from "@/components/ReviewSection";
 import Preloader from "@/components/Preloader";  // Import Preloader
@@ -26,8 +26,11 @@ export default function ProductPage({ params }) {
 
   // State to store fetched products
   const [products, setProducts] = useState([]);
-  const [selectedQuantity, setSelectedQuantity] = useState("15 Cans");
-  const [currentPrice, setCurrentPrice] = useState(7.50);
+  // Use a numeric state for quantity (default 15)
+  const [selectedQuantity, setSelectedQuantity] = useState(15);
+  // Dynamic pricing states
+  const [pricePerItem, setPricePerItem] = useState(0);
+  const [currentPrice, setCurrentPrice] = useState(0);
 
   const [loading, setLoading] = useState(true); // Loading state
   const [userId, setUserId] = useState(null); // Store user ID
@@ -56,7 +59,8 @@ export default function ProductPage({ params }) {
   useEffect(() => {
     const getProducts = async () => {
       try {
-        const fetchedProducts = await fetchAllProducts(); // Use the updated utility
+        const fetchedProducts = await fetchProducts(); // Use the updated utility
+        console.log(fetchProducts);
         setProducts(fetchedProducts); // Store the fetched products in state
         setLoading(false); // Set loading to false after fetching
       } catch (error) {
@@ -73,6 +77,44 @@ export default function ProductPage({ params }) {
 
   // Find the product based on the ID
   const product = products.find((p) => p.id === parseInt(unwrappedParams.id));
+
+  // Compute effective price ranges:
+  // If the product has custom_price_ranges keyed by userId, use that array,
+  // otherwise fallback to product.price_ranges.
+  const effectivePriceRanges =
+    product && userId &&
+    product.custom_price_ranges &&
+    product.custom_price_ranges[userId] &&
+    product.custom_price_ranges[userId].length > 0
+      ? product.custom_price_ranges[userId]
+      : product && userId ? product.price_ranges || [] : [];
+
+  // Update the dynamic pricing when the selected quantity or effectivePriceRanges change.
+  useEffect(() => {
+    const q = selectedQuantity;
+    let applicableRange;
+    if (effectivePriceRanges.length > 0) {
+      // Sort ranges by minimum quantity
+      const sortedRanges = [...effectivePriceRanges].sort((a, b) => a.min - b.min);
+      // Find the range where q is between min and max
+      applicableRange = sortedRanges.find(range => q >= range.min && q <= range.max);
+      // If q is greater than all range max values, use the highest range.
+      if (!applicableRange && q > sortedRanges[sortedRanges.length - 1].max) {
+        applicableRange = sortedRanges[sortedRanges.length - 1];
+      }
+      // Fallback to the first range if nothing is found
+      if (!applicableRange) {
+        applicableRange = sortedRanges[0];
+      }
+    }
+    if (applicableRange) {
+      setPricePerItem(applicableRange.price);
+      setCurrentPrice(q * applicableRange.price);
+    } else {
+      setPricePerItem(0);
+      setCurrentPrice(0);
+    }
+  }, [selectedQuantity, effectivePriceRanges]);
 
   // Extract strengths from the current product's variants
   useEffect(() => {
@@ -100,187 +142,190 @@ export default function ProductPage({ params }) {
     }
   };
 
-  // Get min and max prices from the product's variants
-  const minPrice = Math.min(
-    ...product.variant.map((variant) =>
-      Math.min(...Object.values(variant.product.price_ranges || {}))
-  )
-  );
-
-  const maxPrice = Math.max(
-    ...product.variant.map((variant) =>
-      Math.max(...Object.values(variant.product.price_ranges || {}))
-  )
-  );
-
-  const imageUrl = product.Image?.formats?.medium?.url || product.Image?.url || '/4.png';
-  const fullImageUrl = `https://pouchesworldwide.com/strapi${imageUrl}`;
+  const imageUrlProduct = product.Image?.formats?.medium?.url || product.Image?.url || '/4.png';
+  const fullImageUrl = `https://pouchesworldwide.com/strapi${imageUrlProduct}`;
   const description = product.Description?.[0]?.children?.[0]?.text || 'No description available';
-
 
   return (
     <>
-    <Header />
-    <main className="container mx-auto px-4 py-8">
-      <div className="flex w-full flex-col lg:flex-row">
-        <div className="card flex-grow place-items-center">
-          <div className="w-[603px] h-[540px] relative">
-            <div className="w-[600px] h-[500px] left-0 top-0 absolute bg-neutral rounded-[5px] pt-4" />
-            <div className="absolute left-0 top-0 w-full h-full">
-              <img
-                src={fullImageUrl}
-                alt={product.Name}
-                className="w-full h-full object-cover rounded-[5px]"
-              />
+      <Header />
+      <main className="container mx-auto px-4 py-8">
+        <div className="flex w-full flex-col lg:flex-row">
+          <div className="card flex-grow place-items-center">
+            <div className="w-[603px] h-[540px] relative">
+              <div className="w-[600px] h-[500px] left-0 top-0 absolute bg-neutral rounded-[5px] pt-4" />
+              <div className="absolute left-0 top-0 w-full h-full">
+                <img
+                  src={fullImageUrl}
+                  alt={product.Name}
+                  className="w-full h-full object-cover rounded-[5px]"
+                />
+              </div>
+            </div>
+            <div className="mb-12">
+              <Guidelines guidelines={guidelines} />
             </div>
           </div>
-          <div className="mb-12">
-            <Guidelines guidelines={guidelines} />
-          </div>
-        </div>
 
-        <div className="card flex-grow place-items-center">
-          {/* Product Details */}
-          <div className="bg-white p-8 rounded-lg">
-            <div className="flex justify-between items-center">
-              <h1 className="text-[28px] font-bold text-primary mb-4">{product.Name}</h1>
-              <div className="w-28 h-[57px] px-[17px] py-1.5 bg-gradient-to-r from-[#009b7c] via-[#0bbf9c] to-[#009b7d] rounded-[10px] justify-center items-center gap-2.5 inline-flex">
-                <div className="text-white text-sm font-semibold font-['Poppins'] capitalize">
-                  in stock
+          <div className="card flex-grow place-items-center">
+            {/* Product Details */}
+            <div className="bg-white p-8 rounded-lg">
+              <div className="flex justify-between items-center">
+                <h1 className="text-[28px] font-bold text-primary mb-4">{product.Name}</h1>
+                <div className="w-28 h-[57px] px-[17px] py-1.5 bg-gradient-to-r from-[#009b7c] via-[#0bbf9c] to-[#009b7d] rounded-[10px] justify-center items-center gap-2.5 inline-flex">
+                  <div className="text-white text-sm font-semibold font-['Poppins'] capitalize">
+                    in stock
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center mb-4">
-              <div className="rating">
-                {[...Array(5)].map((_, index) => (
-                  <input
-                    key={index}
-                    type="radio"
-                    name="rating-2" 
-                    className="mask mask-star-2 bg-orange-400"
-                    defaultChecked={index < product.rating}
-                    disabled
+              <div className="flex items-center mb-4">
+                <div className="rating">
+                  {[...Array(5)].map((_, index) => (
+                    <input
+                      key={index}
+                      type="radio"
+                      name="rating-2" 
+                      className="mask mask-star-2 bg-orange-400"
+                      defaultChecked={index < product.rating}
+                      disabled
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="divider"></div>
+              <div className="h-[44.18px] justify-start items-end gap-[5px] inline-flex">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="40"
+                  height="45"
+                  viewBox="0 0 40 45"
+                  fill="none"
+                >
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M23.5294 3.01159L23.6839 4.51616L23.9004 6.62551L25.818 5.72049L26.9616 5.18081L29.0829 4.17965L28.828 6.51147L28.7151 7.54451L28.4603 9.87634L30.5816 8.87518L31.4317 8.47395L33.6427 7.43048L33.2247 9.83932L33.0596 10.7908L32.6944 12.895L34.793 12.4991L36.6675 12.1455L39.5054 11.6101L37.8289 13.9617L17.8542 41.9795L16.2851 44.1804L15.7121 41.5389L15.4519 40.3395L15.0244 38.3691L13.1241 39.0429L12.4287 39.2894L10.4225 40.0007L10.4408 37.8722L10.4462 37.2468L10.4646 35.1183L8.45837 35.8296L7.86885 36.0386L5.86264 36.7499L5.881 34.6214L5.88736 33.8836L5.90475 31.8674L3.90262 32.1057L2.68398 32.2508L0 32.5702L1.56906 30.3694L21.4628 2.4651L23.2202 0L23.5294 3.01159ZM24.7541 8.43419L26.7067 7.51264L26.4721 9.65905L26.0841 13.2093L29.3139 11.685L31.0137 10.8828L30.7239 12.553L30.2306 15.395L33.0652 14.8603L34.991 14.497L31.7783 19.0033L18.7302 9.74334L21.772 5.47669L21.9109 6.82976L22.1994 9.63987L24.7541 8.43419ZM16.9887 12.1861L8.25951 24.4302L21.1632 33.8928L30.0368 21.4461L16.9887 12.1861ZM19.4215 36.3358L6.51783 26.8732L4.25304 30.0499L5.66838 29.8815L7.92427 29.613L7.90468 31.8847L7.88721 33.9101L9.79625 33.2332L12.4891 32.2785L12.4645 35.1355L12.447 37.1609L14.3561 36.4841L16.4973 35.7249L16.979 37.9451L17.2811 39.338L19.4215 36.3358Z"
+                    fill="#3F6075"
                   />
-                ))}
+                </svg>
+                <div>
+                  <span className="text-[#39527d] text-[28px] font-medium font-['Poppins'] capitalize">{product.can}</span>
+                  <span className="text-[#3e5f75] text-[28px] font-medium font-['Poppins'] capitalize"> pouches </span>
+                  <span className="text-[#3e5f75] text-sm font-medium font-['Poppins'] capitalize">in a can</span>
+                </div>
               </div>
-            </div>
-            <div className="divider"></div>
-            <div className="h-[44.18px] justify-start items-end gap-[5px] inline-flex">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="40"
-                height="45"
-                viewBox="0 0 40 45"
-                fill="none"
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M23.5294 3.01159L23.6839 4.51616L23.9004 6.62551L25.818 5.72049L26.9616 5.18081L29.0829 4.17965L28.828 6.51147L28.7151 7.54451L28.4603 9.87634L30.5816 8.87518L31.4317 8.47395L33.6427 7.43048L33.2247 9.83932L33.0596 10.7908L32.6944 12.895L34.793 12.4991L36.6675 12.1455L39.5054 11.6101L37.8289 13.9617L17.8542 41.9795L16.2851 44.1804L15.7121 41.5389L15.4519 40.3395L15.0244 38.3691L13.1241 39.0429L12.4287 39.2894L10.4225 40.0007L10.4408 37.8722L10.4462 37.2468L10.4646 35.1183L8.45837 35.8296L7.86885 36.0386L5.86264 36.7499L5.881 34.6214L5.88736 33.8836L5.90475 31.8674L3.90262 32.1057L2.68398 32.2508L0 32.5702L1.56906 30.3694L21.4628 2.4651L23.2202 0L23.5294 3.01159ZM24.7541 8.43419L26.7067 7.51264L26.4721 9.65905L26.0841 13.2093L29.3139 11.685L31.0137 10.8828L30.7239 12.553L30.2306 15.395L33.0652 14.8603L34.991 14.497L31.7783 19.0033L18.7302 9.74334L21.772 5.47669L21.9109 6.82976L22.1994 9.63987L24.7541 8.43419ZM16.9887 12.1861L8.25951 24.4302L21.1632 33.8928L30.0368 21.4461L16.9887 12.1861ZM19.4215 36.3358L6.51783 26.8732L4.25304 30.0499L5.66838 29.8815L7.92427 29.613L7.90468 31.8847L7.88721 33.9101L9.79625 33.2332L12.4891 32.2785L12.4645 35.1355L12.447 37.1609L14.3561 36.4841L16.4973 35.7249L16.979 37.9451L17.2811 39.338L19.4215 36.3358Z"
-                  fill="#3F6075"
-                />
-              </svg>
-              <div>
-                <span className="text-[#39527d] text-[28px] font-medium font-['Poppins'] capitalize">{product.can}</span>
-                <span className="text-[#3e5f75] text-[28px] font-medium font-['Poppins'] capitalize"> pouches </span>
-                <span className="text-[#3e5f75] text-sm font-medium font-['Poppins'] capitalize">in a can</span>
-              </div>
-            </div>
-            <div className="divider"></div>
-
-            <div className="mb-4">
-              <label htmlFor="strength-selector" className="block text-gray-700 font-medium">
-                Select Strength:
-              </label>
-              <select
-                id="strength-selector"
-                className="w-full p-2 border rounded-lg"
-                value={selectedStrength}
-                onChange={handleStrengthChange}
-              >
-                <option value="">Choose Strength</option>
-                {strengths.map((strength, index) => (
-                  <option key={index} value={strength}> 
-                    {strength}
-                  </option>
-                ))}
-              </select>
-            </div> 
-
-            <div className="divider"></div>
-
-            <label htmlFor="strength-selector" className="block text-gray-700 font-medium">
-                Quantity:
-              </label>
-              <input className="text-[#39527d] text-[20px] font-medium font-['Poppins'] capitalize border w-17 rounded-lg p-2"></input>
               <div className="divider"></div>
 
-          {/*  <div className="text-black text-[38px] font-bold mt-2 mb-6">${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}</div>*/} 
-            <div className="divider"></div>
-            <div className="space-y-4 mb-6">
-              <p className="text-primary text-[18px]">{description}</p>
-            </div>
-            {userRole === "wholesaler" && (
-              <div
-                className="flex items-center border rounded-lg p-4 bg-white"
-                style={{ width: "540px", height: "119px", flexShrink: 0 }}
-              >
-                <div className="flex-grow">
-                  <label htmlFor="customAmount" className="text-gray-700 font-medium">
-                    Request Custom Amount
-                  </label>
-                  <input
-                    type="number"
-                    id="customAmount"
-                    className="mt-2 border-b border-gray-300 focus:outline-none focus:border-orange-500 w-full rounded-r-md"
-                    placeholder="Enter amount"
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="inline-flex items-center justify-center gap-2.5 bg-primary text-white font-bold rounded-md ml-4"
-                  style={{ padding: "5px 20px" }}
-                  onClick={handleRequestClick}
+              <div className="mb-4">
+                <label htmlFor="strength-selector" className="block text-gray-700 font-medium">
+                  Select Strength:
+                </label>
+                <select
+                  id="strength-selector"
+                  className="w-full p-2 border rounded-lg"
+                  value={selectedStrength}
+                  onChange={handleStrengthChange}
                 >
-                  Request
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="35"
-                    height="34"
-                    viewBox="0 0 35 34"
-                    fill="none"
-                  >
-                    <path
-                      d="M0.812988 29.5895V0.812988L26.532 11.6042H25.9924C24.9433 11.6042 23.9541 11.7241 23.0249 11.9639C22.0956 12.2037 21.1964 12.5334 20.3271 12.9531L4.41005 6.20859V12.5034L15.2012 15.2012L4.41005 17.899V24.1939L14.1221 20.0573C13.8823 20.7467 13.7025 21.4284 13.5826 22.1022C13.4627 22.7773 13.4027 23.4745 13.4027 24.1939V24.2838L0.812988 29.5895ZM25.9924 33.1866C23.5045 33.1866 21.384 32.3101 19.631 30.5571C17.8769 28.8029 16.9998 26.6819 16.9998 24.1939C16.9998 21.7059 17.8769 19.5849 19.631 17.8307C21.384 16.0777 23.5045 15.2012 25.9924 15.2012C28.4804 15.2012 30.6015 16.0777 32.3556 17.8307C34.1086 19.5849 34.9851 21.7059 34.9851 24.1939C34.9851 26.6819 34.1086 28.8029 32.3556 30.5571C30.6015 32.3101 28.4804 33.1866 25.9924 33.1866ZM28.96 28.4205L30.219 27.1615L26.8917 23.8342V18.7983H25.0932V24.5536L28.96 28.4205ZM4.41005 20.0573V6.20859V24.1939V20.0573Z"
-                      fill="white"
-                    />
-                  </svg>
-                </button>
+                  <option value="">Choose Strength</option>
+                  {strengths.map((strength, index) => (
+                    <option key={index} value={strength}> 
+                      {strength}
+                    </option>
+                  ))}
+                </select>
+              </div> 
+
+              <div className="divider"></div>
+
+              <label htmlFor="quantity" className="block text-gray-700 font-medium">
+                Quantity:
+              </label>
+              <input
+                type="number"
+                id="quantity"
+                value={selectedQuantity}
+                onChange={(e) => setSelectedQuantity(Number(e.target.value))}
+                className="text-[#39527d] text-[20px] font-medium font-['Poppins'] border w-full rounded-lg p-2 mb-2"
+              />
+              {/* Display dynamic pricing info */}
+              <div className="mb-4 text-lg">
+                {pricePerItem > 0 ? (
+                  <>
+                    <div>Total: ${currentPrice.toFixed(2)}</div>
+                  </>
+                ) : (
+                  <div>No pricing available</div>
+                )}
               </div>
-            )}
-         
-            <div
-              className="w-[244px] px-3 py-2 mt-6 bg-[radial-gradient(circle,_#fae255_0%,_#a06a0f_100%)] rounded-md flex items-end justify-end gap-[10px] cursor-pointer hover:shadow-lg transition-shadow duration-200 ml-auto"
-              onClick={(e) => {
-                e.preventDefault();
-                addToCart({
-                  ...product,
-                  price: currentPrice,
-                  selectedCans: selectedQuantity, 
-                  imageUrl: fullImageUrl,
-                  strength: selectedStrength
-                });
-              }}
-            >
-              <div className="text-[#282f44] text-[28px] font-medium font-['Poppins'] capitalize leading-[39.20px]">
-                Add to cart +
+
+              <div className="divider"></div>
+              <div className="space-y-4 mb-6">
+                <p className="text-primary text-[18px]">{description}</p>
+              </div>
+              {userRole === "wholesaler" && (
+                <div
+                  className="flex items-center border rounded-lg p-4 bg-white"
+                  style={{ width: "540px", height: "119px", flexShrink: 0 }}
+                >
+                  <div className="flex-grow">
+                    <label htmlFor="customAmount" className="text-gray-700 font-medium">
+                      Request Custom Amount
+                    </label>
+                    <input
+                      type="number"
+                      id="customAmount"
+                      className="mt-2 border-b border-gray-300 focus:outline-none focus:border-orange-500 w-full rounded-r-md"
+                      placeholder="Enter amount"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="inline-flex items-center justify-center gap-2.5 bg-primary text-white font-bold rounded-md ml-4"
+                    style={{ padding: "5px 20px" }}
+                    onClick={() => {
+                      if (customAmount) {
+                        router.push(`/request?customAmount=${customAmount}&productId=${unwrappedParams.id}`);
+                      }
+                    }}
+                  >
+                    Request
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="35"
+                      height="34"
+                      viewBox="0 0 35 34"
+                      fill="none"
+                    >
+                      <path
+                        d="M0.812988 29.5895V0.812988L26.532 11.6042H25.9924C24.9433 11.6042 23.9541 11.7241 23.0249 11.9639C22.0956 12.2037 21.1964 12.5334 20.3271 12.9531L4.41005 6.20859V12.5034L15.2012 15.2012L4.41005 17.899V24.1939L14.1221 20.0573C13.8823 20.7467 13.7025 21.4284 13.5826 22.1022C13.4627 22.7773 13.4027 23.4745 13.4027 24.1939V24.2838L0.812988 29.5895ZM25.9924 33.1866C23.5045 33.1866 21.384 32.3101 19.631 30.5571C17.8769 28.8029 16.9998 26.6819 16.9998 24.1939C16.9998 21.7059 17.8769 19.5849 19.631 17.8307C21.384 16.0777 23.5045 15.2012 25.9924 15.2012C28.4804 15.2012 30.6015 16.0777 32.3556 17.8307C34.1086 19.5849 34.9851 21.7059 34.9851 24.1939C34.9851 26.6819 34.1086 28.8029 32.3556 30.5571C30.6015 32.3101 28.4804 33.1866 25.9924 33.1866ZM28.96 28.4205L30.219 27.1615L26.8917 23.8342V18.7983H25.0932V24.5536L28.96 28.4205ZM4.41005 20.0573V6.20859V24.1939V20.0573Z"
+                        fill="white"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <div
+                className="w-[244px] px-3 py-2 mt-6 bg-[radial-gradient(circle,_#fae255_0%,_#a06a0f_100%)] rounded-md flex items-end justify-end gap-[10px] cursor-pointer hover:shadow-lg transition-shadow duration-200 ml-auto"
+                onClick={(e) => {
+                  e.preventDefault();
+                  addToCart({
+                    ...product,
+                    price: currentPrice,
+                    selectedCans: selectedQuantity, 
+                    imageUrl: fullImageUrl,
+                    strength: selectedStrength
+                  });
+                }}
+              >
+                <div className="text-[#282f44] text-[28px] font-medium font-['Poppins'] capitalize leading-[39.20px]">
+                  Add to cart +
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </main>
+      </main>
       {userRole === "guest" ? (
         // Show small banner row only for guests
         <div className="w-full h-[109px] px-[140px] bg-black shadow-[0px_0px_17px_0px_rgba(245,208,97,0.25)] border justify-center items-center gap-[84px] inline-flex">

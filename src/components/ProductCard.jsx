@@ -1,6 +1,5 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
+'use client';
+import React, { useState, useEffect } from 'react';
 import Link from "next/link";
 import useCartStore from "@/store/cartStore";
 import { getUserRole } from "@/app/utils/getUserRole";
@@ -9,7 +8,7 @@ const ProductCard = ({ product }) => {
   const { id, Name, Stock, Description, category, Image, rating, documentId } = product;
   const [userRole, setUserRole] = useState(null);
   const [username, setUsername] = useState(null);
-  const [userId, setUserId] = useState(null); // Store user ID
+  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -18,7 +17,7 @@ const ProductCard = ({ product }) => {
 
   const addToCart = useCartStore((state) => state.addToCart);
 
-  // State for selected quantities (mg) and their counts
+  // State for selected quantities (strength values) and their counts
   const [selectedQuantities, setSelectedQuantities] = useState([]);
 
   useEffect(() => {
@@ -40,23 +39,19 @@ const ProductCard = ({ product }) => {
     }
   }, []);
 
-  // Handle quantity button click
   const handleQuantityClick = (mg) => {
     setSelectedQuantities((prev) => {
       const existingIndex = prev.findIndex((item) => item.mg === mg);
       if (existingIndex >= 0) {
-        // If the quantity already exists, increment its count
         const updatedQuantities = [...prev];
         updatedQuantities[existingIndex].count += 1;
         return updatedQuantities;
       } else {
-        // If the quantity doesn't exist, add it with a count of 1
         return [...prev, { mg, count: 1 }];
       }
     });
   };
 
-  // Handle increment and decrement for a specific quantity
   const handleIncrement = (mg) => {
     setSelectedQuantities((prev) =>
       prev.map((item) =>
@@ -71,77 +66,60 @@ const ProductCard = ({ product }) => {
         .map((item) =>
           item.mg === mg ? { ...item, count: Math.max(0, item.count - 1) } : item
         )
-        .filter((item) => item.count > 0) // Remove if count reaches 0
+        .filter((item) => item.count > 0)
     );
   };
 
-  // Skeleton Loader Component
-  const SkeletonLoader = () => (
-    <div className="card w-[297px] h-[470px] bg-neutral shadow-xl relative flex flex-col cursor-pointer animate-pulse">
-      {/* Image Skeleton */}
-      <div className="px-8 pt-6">
-        <div className="w-[200px] h-[200px] bg-gray-300 rounded-lg"></div>
-      </div>
+  // Compute effective price ranges:
+  // If product.custom_price_ranges exists for the current user, use that.
+  // Otherwise, fallback to product.price_ranges.
+  // If neither exists, we'll show product.price.
+  const effectivePriceRanges = 
+  product.custom_price_ranges &&
+  userId &&
+  Array.isArray(product.custom_price_ranges[userId]) &&
+  product.custom_price_ranges[userId].length > 0
+    ? product.custom_price_ranges[userId]
+    : Array.isArray(product.price_ranges)
+      ? product.price_ranges
+      : [];
 
-      {/* Content Skeleton */}
-      <div className="card-body p-6 flex flex-col flex-grow">
-        <div className="flex flex-col items-center">
-          {/* Product Name Skeleton */}
-          <div className="w-3/4 h-6 bg-gray-300 rounded mb-2"></div>
 
-          {/* Document ID Skeleton */}
-          <div className="w-1/2 h-4 bg-gray-300 rounded mb-4"></div>
+  // Sort effective price ranges by min value.
+  const sortedRanges = [...effectivePriceRanges].sort((a, b) => a.min - b.min);
 
-          {/* Rating Stars Skeleton */}
-          <div className="flex justify-center mt-2">
-            {[...Array(5)].map((_, index) => (
-              <div key={index} className="w-4 h-4 bg-gray-300 rounded-full mx-1"></div>
-            ))}
-          </div>
-        </div>
+  // If sortedRanges exist, use the lowest range's price per item.
+  // Otherwise, fallback to product.price.
+  const lowestPrice = sortedRanges.length > 0 ? sortedRanges[0].price : product.price;
 
-        {/* Price and Selector Skeleton */}
-        <div className="flex justify-between items-center mt-4">
-          <div className="w-32 h-10 bg-gray-300 rounded"></div>
-          <div className="w-16 h-6 bg-gray-300 rounded"></div>
-        </div>
-
-        {/* Add to Cart Button Skeleton */}
-        <div className="w-full h-10 bg-gray-300 rounded mt-2 mb-6"></div>
-      </div>
-    </div>
-  );
-
-  // Handle Add to Cart
   const handleAddToCart = () => {
     if (selectedQuantities.length === 0) {
       setError("Please select at least one strength.");
       return;
     }
 
-    // Create separate orders for each selected strength
     selectedQuantities.forEach((item) => {
       const order = {
-        ...product, // Spread the product details
-        price: product.price, // Use the product's base price
-        strength: item.mg, // Strength (e.g., 6mg, 22mg)
-        count: item.count, // Quantity selected for this strength
-        imageUrl: fullImageUrl, // Full image URL
+        ...product,
+        price: lowestPrice, // Use the lowest price per unit
+        strength: item.mg,
+        count: item.count,
+        imageUrl: fullImageUrl,
       };
-      addToCart(order); // Add each order to the cart
+      addToCart(order);
     });
 
-    // Reset selected quantities after adding to cart
     setSelectedQuantities([]);
   };
 
   return (
     <>
       {loading ? (
-        <SkeletonLoader />
+        <div className="card w-[297px] h-[470px] bg-neutral shadow-xl relative flex flex-col cursor-pointer animate-pulse">
+          {/* Skeleton content omitted for brevity */}
+        </div>
       ) : (
         <div className="card w-[300px] bg-neutral shadow-xl relative flex flex-col cursor-pointer">
-          {/* Product Link */}
           <Link href={`/product/${id}`} passHref>
             <figure className="px-8 pt-6">
               {imageUrl && (
@@ -155,23 +133,16 @@ const ProductCard = ({ product }) => {
               )}
             </figure>
           </Link>
-
-          {/* Card Content */}
           <div className="card-body p-6 flex flex-col flex-grow">
             <div className="flex flex-col items-center">
-              {/* Display User ID */}
               <div style={{ display: "none" }}>
                 {userId && <p className="text-sm text-gray-400">User ID: {userId}</p>}
               </div>
-
-              {/* Product Name */}
               <Link href={`/product/${id}`} passHref>
                 <h2 className="text-center font-semibold text-primary text-[16px] font-poppins">
                   {Name}
                 </h2>
               </Link>
-
-              {/* Rating Stars */}
               <div className="flex justify-center mt-2">
                 <div className="rating">
                   {[...Array(5)].map((_, index) => (
@@ -189,16 +160,16 @@ const ProductCard = ({ product }) => {
                 </div>
               </div>
             </div>
-
-            {/* Product Details */}
+            {/* Display Price Per Unit based on the lowest price range or fallback */}
             <div className="flex justify-between items-center mt-4">
               <span className="text-xl font-semibold">Price Per Unit</span>
-              <span className="text-xl font-semibold">${product.price.toFixed(2)}</span>
+              <span className="text-xl font-semibold">
+                ${lowestPrice ? lowestPrice.toFixed(2) : 'N/A'}
+              </span>
             </div>
 
             {/* Quantity Buttons */}
             <div className="flex flex-col gap-4 mt-4">
-              {/* Top Row: 6mg, 12mg, 16mg */}
               <div className="flex justify-between">
                 {[6, 12, 16].map((mg) => {
                   const selectedItem = selectedQuantities.find((item) => item.mg === mg);
@@ -210,7 +181,7 @@ const ProductCard = ({ product }) => {
                           selectedItem
                             ? "bg-black text-white text-bold"
                             : "bg-gray-300"
-                        } border-none text-base `}
+                        } border-none text-base`}
                       >
                         {mg}mg
                       </button>
@@ -235,8 +206,6 @@ const ProductCard = ({ product }) => {
                   );
                 })}
               </div>
-
-              {/* Bottom Row: 22mg */}
               <div className="flex justify-center">
                 {[22].map((mg) => {
                   const selectedItem = selectedQuantities.find((item) => item.mg === mg);
@@ -283,7 +252,6 @@ const ProductCard = ({ product }) => {
               Add To Cart +
             </button>
 
-            {/* Error Messages */}
             {error && <p className="text-sm text-red-500">{error}</p>}
           </div>
         </div>

@@ -6,235 +6,196 @@ const Products = ({ product, userId }) => {
   const { id, Name, Image, Selector, documentId } = product;
 
   // Generate the image URL
-  const imageUrl = Image?.formats?.medium?.url || Image?.url || '/4.png';
+  const imageUrl = Image?.formats?.medium?.url || Image?.url || "/4.png";
   const fullImageUrl = `https://pouchesworldwide.com/strapi${imageUrl}`;
 
-  // Manually set the userId
-  const manualUserId = +userId; // Replace this with your desired userId
+  // Convert userId to number
+  const manualUserId = +userId;
 
-  const [customPrices, setCustomPrices] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null); 
-
-  // Quantity and Price Input State
-  const [customQuantity, setCustomQuantity] = useState("");
+  // Local state for price ranges specific to the current user.
+  // We will load from product.custom_price_ranges[manualUserId] if available,
+  // otherwise fallback to product.price_ranges.
+  const [priceRanges, setPriceRanges] = useState([]);
+  
+  // Input states for adding a new custom price range entry.
+  const [customMin, setCustomMin] = useState("");
+  const [customMax, setCustomMax] = useState("");
   const [customPrice, setCustomPrice] = useState("");
-  const [customEntries, setCustomEntries] = useState([]);
-  const [removedEntries, setRemovedEntries] = useState([]); // Track removed entries
 
-  // Sort the default Selector by Position
-  const sortedSelector = Selector ? [...Selector].sort((a, b) => a.Position - b.Position) : [];
-  const defaultSelection = sortedSelector.length > 0 ? sortedSelector[0] : { Cans: 0, Price: 0 };
-
-  // Fetch custom prices from the server
+  // On product load, initialize priceRanges.
   useEffect(() => {
-    const fetchCustomPrices = async () => {
-      if (!manualUserId) return;
-
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch(
-          `https://pouchesworldwide.com/strapi/api/products/${documentId}?populate[0]=wprice&populate[1]=wprice.user&populate[2]=wprice.price`
-        );
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-
-        // Find the user's custom prices
-        const userProduct = data.data.wprice.find((wp) => wp.user.id === manualUserId);
-        if (userProduct) {
-          setCustomPrices(userProduct.price); // Set custom prices if available
-        } else {
-          setCustomPrices(null); // No custom prices for this user
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false); // Set loading to false after fetching
+    if (product) {
+      // custom_price_ranges is expected to be a JSON object with keys as user IDs.
+      if (product.custom_price_ranges && product.custom_price_ranges[manualUserId]) {
+        setPriceRanges(product.custom_price_ranges[manualUserId]);
+      } else if (product.price_ranges && product.price_ranges.length > 0) {
+        setPriceRanges(product.price_ranges);
+      } else {
+        setPriceRanges([]);
       }
-    };
+    }
+  }, [product, manualUserId]);
 
-    fetchCustomPrices();
-  }, [manualUserId, documentId]);
-
-  // Combine existing custom prices and new custom entries
-  const pricesToUse = [
-    ...(customPrices || []), // Existing custom prices from the server
-    ...customEntries, // New custom prices added by the user
-  ].filter(
-    (entry) =>
-      !removedEntries.some(
-        (removed) =>
-          removed.Cans === entry.Cans && removed.Price === entry.Price
-      )
-  );
-
-  // Add a custom entry
-  const addCustomEntry = () => {
-    if (customQuantity && customPrice) {
-      setCustomEntries([
-        ...customEntries,
-        { Cans: customQuantity, Price: parseFloat(customPrice) }, // Use Cans and Price for consistency
+  // Add a new price range entry.
+  const addPriceRangeEntry = () => {
+    if (customMin && customMax && customPrice) {
+      setPriceRanges([
+        ...priceRanges,
+        {
+          min: Number(customMin),
+          max: Number(customMax),
+          price: parseFloat(customPrice)
+        }
       ]);
-      setCustomQuantity("");
+      setCustomMin("");
+      setCustomMax("");
       setCustomPrice("");
     }
   };
 
-  // Remove a custom entry
-  const removeCustomEntry = (index) => {
-    const entryToRemove = pricesToUse[index];
-    setRemovedEntries([...removedEntries, entryToRemove]); // Track removed entries
+  // Remove a price range entry by index.
+  const removePriceRangeEntry = (index) => {
+    const updated = [...priceRanges];
+    updated.splice(index, 1);
+    setPriceRanges(updated);
   };
 
-  // Save custom prices
-  const savePrices = async () => {
+  // Save the updated custom price ranges in the product document.
+  // The custom_price_ranges field will be a JSON with keys as user IDs.
+  const savePriceRanges = async () => {
     try {
+      // Merge with any existing custom_price_ranges object.
+      const existingCustom = product.custom_price_ranges || {};
+      const updatedCustomPriceRanges = {
+        ...existingCustom,
+        [manualUserId]: priceRanges.map((range) => ({
+          min: Number(range.min),
+          max: Number(range.max),
+          price: Number(range.price)
+        }))
+      };
+
       const payload = {
         data: {
-          wprice: [
-            {
-              price: pricesToUse.map((entry) => ({
-                Cans: entry.Cans,
-                Price: entry.Price,
-                BestDeal: false,
-              })),
-              user: {
-                id: manualUserId,
-              },
-            },
-          ],
-        },
+          custom_price_ranges: updatedCustomPriceRanges
+        }
       };
 
       const response = await fetch(
-        `https://pouchesworldwide.com/strapi/api/products/${documentId}?populate[0]=wprice&populate[1]=wprice.user&populate[2]=wprice.price`,
+        `https://pouchesworldwide.com/strapi/api/products/${documentId}`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer 5052969b56473855941566f1676c3741c7b9698aca9ebd14df17d9cc2f9e81df39925d986c857bdec7fc3c32ae46dea1469eae3b4d34908c3420cc93f8e2401a2bad1c4cde33a2c1b8209956f1ad2d7b4119474aab82d8434a43927f571688a7808b64be699e37a49cc87054df0657b8cad25fbcc8d6ff7048ae4f2304a55c99` },
+          body: JSON.stringify(payload)
         }
       );
 
-      if (!response.ok) throw new Error("Failed to save prices");
+      if (!response.ok) throw new Error("Failed to save custom price ranges");
 
-      alert("Prices saved successfully!");
-      setRemovedEntries([]); // Clear removed entries after successful save
+      alert("Custom price ranges saved successfully!");
       window.location.reload();
     } catch (error) {
-      console.error("Error saving prices:", error);
+      console.error("Error saving custom price ranges:", error);
     }
   };
 
-  // Skeleton Loader Component
-  const SkeletonLoader = () => (
-    <div className="card w-[333px] bg-neutral shadow-xl relative flex flex-col cursor-pointer animate-pulse">
-      {/* Image Skeleton */}
-      <div className="px-8 pt-6">
-        <div className="w-[200px] h-[200px] bg-gray-300 rounded-lg"></div>
-      </div>
-
-      {/* Content Skeleton */}
-      <div className="card-body p-6 flex flex-col flex-grow">
-        {/* Product Name Skeleton */}
-        <div className="w-3/4 h-6 bg-gray-300 rounded mb-2"></div>
-
-        {/* Price Entries Skeleton */}
-        <div className="space-y-2">
-          {[1, 2, 3].map((_, index) => (
-            <div key={index} className="w-full h-[79.38px] bg-gray-300 rounded-lg"></div>
-          ))}
-        </div>
-
-        {/* Input Fields Skeleton */}
-        <div className="flex items-center mb-2 space-x-4 mt-4">
-          <div className="w-1/4 h-[34px] bg-gray-300 rounded-lg"></div>
-          <div className="w-1/4 h-[34px] bg-gray-300 rounded-lg"></div>
-          <div className="w-1/4 h-[34px] bg-gray-300 rounded-lg"></div>
-        </div>
-
-        {/* Save Button Skeleton */}
-        <div className="w-full h-10 bg-gray-300 rounded-lg mt-4"></div>
-      </div>
-    </div>
-  );
-
   return (
-    <>
-      {loading ? (
-        <SkeletonLoader />
-      ) : (
-        <div className="card w-[333px] bg-neutral shadow-xl relative flex flex-col cursor-pointer">
-          <figure className="px-8 pt-6">
-            {imageUrl && <img src={fullImageUrl} alt={Name} width={200} height={200} className="rounded-lg" />}
-          </figure>
-          <div className="card-body p-6 flex flex-col flex-grow">
-            <h2 className="text-center font-semibold text-primary text-[22px] font-poppins">{Name}</h2>
+    <div className="card w-[333px] bg-neutral shadow-xl relative flex flex-col cursor-pointer">
+      <figure className="px-8 pt-6">
+        {imageUrl && (
+          <img
+            src={fullImageUrl}
+            alt={Name}
+            width={200}
+            height={200}
+            className="rounded-lg"
+          />
+        )}
+      </figure>
+      <div className="card-body p-6 flex flex-col flex-grow">
+        <h2 className="text-center font-semibold text-primary text-[22px] font-poppins">
+          {Name}
+        </h2>
 
-            {/* Display user's product prices */}
-            <div className="item-center justify-center rounded-lg">
-              {pricesToUse.map((price, index) => (
-                <div key={index} className="flex justify-between items-center border border-[#adb5bd] p-2 rounded-lg w-[291.52px] h-[79.38px] mb-2">
-                  <span className="text-[#282f44] text-[22px] font-medium font-['Poppins']">
-                    {price.Cans} Cans ${price.Price.toFixed(2)}
-                  </span>
-                  <button
-                    onClick={() => removeCustomEntry(index)}
-                    className="text-red-500"
-                  >
-                    <CircleX size={22} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Quantity and Price Input */}
-            <div className="mb-1 border pl-2 pt-2 rounded-lg border-[#3f6075]/40">
-              <div className="flex items-center mb-2 space-x-4">
-                <div className="flex flex-col w-1/4 rounded-lg">
-                  <label className="text-sm mb-1 text-left">Cans</label>
-                  <input
-                    type="number"
-                    value={customQuantity}
-                    onChange={(e) => setCustomQuantity(e.target.value)}
-                    className="px-4 py-2 border border-[#3f6075]/90 rounded-lg h-[34px] w-[66px]"
-                  />
-                </div>
-                <div className="flex flex-col w-1/4">
-                  <label className="text-sm mb-1 text-left">Price</label>
-                  <input
-                    type="number"
-                    value={customPrice}
-                    onChange={(e) => setCustomPrice(e.target.value)}
-                    className="px-4 py-2 border border-[#3f6075]/90 rounded-lg h-[34px] w-[66px]"
-                  />
-                </div>
+        {/* Display the current custom price ranges */}
+        <div className="item-center justify-center rounded-lg">
+          {priceRanges && priceRanges.length > 0 ? (
+            priceRanges.map((range, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-center border border-[#adb5bd] p-2 rounded-lg w-[291.52px] h-[79.38px] mb-2"
+              >
+                <span className="text-[#282f44] text-[22px] font-medium font-['Poppins']">
+                  {range.min} - {range.max} Cans: ${Number(range.price).toFixed(2)}
+                </span>
                 <button
-                  onClick={addCustomEntry}
-                  disabled={customEntries.length >= 10}
-                  className={`btn btn-sm text-white mt-6 h-10 px-5 py-2.5 ${
-                    customEntries.length >= 10 ? "bg-gray-400 cursor-not-allowed" : "bg-[#009b7c]"
-                  }`}
+                  onClick={() => removePriceRangeEntry(index)}
+                  className="text-red-500"
                 >
-                  Add +
+                  <CircleX size={22} />
                 </button>
               </div>
+            ))
+          ) : (
+            <p className="text-center text-sm text-gray-500">
+              No custom price ranges defined.
+            </p>
+          )}
+        </div>
+
+        {/* Input fields for adding a new custom price range */}
+        <div className="mb-1 border pl-2 pt-2 rounded-lg border-[#3f6075]/40">
+          <div className="flex items-center mb-2 space-x-4">
+            <div className="flex flex-col w-1/4 rounded-lg">
+              <label className="text-sm mb-1 text-left">Min</label>
+              <input
+                type="number"
+                value={customMin}
+                onChange={(e) => setCustomMin(e.target.value)}
+                className="px-2 py-1 border border-[#3f6075]/90 rounded-lg h-[34px] w-[66px]"
+              />
             </div>
-
-            {/* User ID and Product ID */}
-            <p className="text-center text-sm text-gray-500">User ID: {manualUserId} | Product ID: {id}</p>
-
-            {/* Save Button */}
+            <div className="flex flex-col w-1/4 rounded-lg">
+              <label className="text-sm mb-1 text-left">Max</label>
+              <input
+                type="number"
+                value={customMax}
+                onChange={(e) => setCustomMax(e.target.value)}
+                className="px-2 py-1 border border-[#3f6075]/90 rounded-lg h-[34px] w-[66px]"
+              />
+            </div>
+            <div className="flex flex-col w-1/4 rounded-lg">
+              <label className="text-sm mb-1 text-left">Price</label>
+              <input
+                type="number"
+                value={customPrice}
+                onChange={(e) => setCustomPrice(e.target.value)}
+                className="px-2 py-1 border border-[#3f6075]/90 rounded-lg h-[34px] w-[66px]"
+              />
+            </div>
             <button
-              onClick={savePrices}
-              className="btn text-black bg-[radial-gradient(circle,_#fae255_0%,_#a06a0f_100%)] hover:bg-amber-500 border-none text-sm px-3 py-2 w-full mb-4"
+              onClick={addPriceRangeEntry}
+              className="btn btn-sm text-white mt-6 h-10 px-5 py-2.5 bg-[#009b7c]"
             >
-              Save Prices
+              Add +
             </button>
           </div>
         </div>
-      )}
-    </>
+
+        {/* Display User ID and Product ID for reference */}
+        <p className="text-center text-sm text-gray-500">
+          User ID: {manualUserId} | Product ID: {id}
+        </p>
+
+        {/* Save Button */}
+        <button
+          onClick={savePriceRanges}
+          className="btn text-black bg-[radial-gradient(circle,_#fae255_0%,_#a06a0f_100%)] hover:bg-amber-500 border-none text-sm px-3 py-2 w-full mb-4"
+        >
+          Save Custom Price Ranges
+        </button>
+      </div>
+    </div>
   );
 };
 

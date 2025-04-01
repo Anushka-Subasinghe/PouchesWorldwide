@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import ProductCard from "./C_ProductCard";
-import { fetchAllProducts } from "@/app/utils/product"; // Import the utility function
+import { fetchAllProducts } from "../app/utils/fetchProducts"; // Import the utility function
 
 const PrimaryList = () => {
   const [activeTab, setActiveTab] = useState("new");

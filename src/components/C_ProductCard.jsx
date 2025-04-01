@@ -22,9 +22,9 @@ const ProductCard = ({ product }) => {
   const [selectedStrengths, setSelectedStrengths] = useState([]);
 
   // Extract unique strengths from the variant array
-  const strengths = variant
+  const strengths = variant ? variant
     .map((v) => v.strength?.name) // Get strength names
-    .filter((name, index, self) => name && self.indexOf(name) === index); // Remove duplicates
+    .filter((name, index, self) => name && self.indexOf(name) === index) : []; // Remove duplicates
 
   useEffect(() => {
     // Fetch user role & username
